@@ -1,0 +1,6 @@
+{
+    "configuration": "cpu=16MHzatmega32U4",
+    "board": "sparkfun:avr:promicro",
+    "sketch": "code/code.ino",
+    "port": "/dev/ttyACM0"
+}
