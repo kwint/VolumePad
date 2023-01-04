@@ -1,8 +1,7 @@
 from typing import TypeAlias
 
-import pulsectl
-
 import constants as cont
+import pulsectl
 
 Pulse: TypeAlias = pulsectl.Pulse
 SinkInInfo: TypeAlias = pulsectl.PulseSinkInputInfo
@@ -28,7 +27,7 @@ def get_sinks(pulse: Pulse, channel, single=False):
 
 
 def change_volume(pulse: pulsectl.Pulse, channel, volume: int):
-    sinks = get_sinks(pulse, channel, True)
+    sinks = get_sinks(pulse, channel, False)
 
     if sinks is None:
         return None

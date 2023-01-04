@@ -71,14 +71,14 @@ void sendFaders()
   {
     writeOrder(FADER0);
     writeI16(fader0CurrentPos);
-    writeI16(32767);
+    Serial.write('\n');
     oldFader0Pos = fader0CurrentPos;
   }
   if (!fader1Updating && (fader1CurrentPos < (oldFader1Pos - faderHysteresis) || fader1CurrentPos > (oldFader1Pos + faderHysteresis)))
   {
     writeOrder(FADER1);
     writeI16(fader1CurrentPos);
-    writeI16(32767);
+    Serial.write('\n');
     oldFader1Pos = fader1CurrentPos;
   }
 }

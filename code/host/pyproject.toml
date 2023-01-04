@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.10"
 robust-serial = "^0.1"
 pulsectl = "^22.3.2"
+pyserial = "^3.5"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.12.0"

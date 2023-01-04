@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "volumepad",
+			"path": "."
+		},
+		{
+			"name": "Host code",
+			"path": "code/host"
+		},
+		{
+			"name": "Board code",
+			"path": "code/board"
+		}
+	],
+	"settings": {}
+}
