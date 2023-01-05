@@ -14,17 +14,22 @@ int RXLED = 17; // The RX LED has a defined Arduino pin
 // (We could use the same macros for the RX LED too -- RXLED1,
 //  and RXLED0.)
 
-int16_t fader0Pos = 0;
-int16_t fader1Pos = 0;
-
-int16_t oldFader0Pos = 0;
-int16_t oldFader1Pos = 0;
-
-bool fader0Updating = false;
-bool fader1Updating = false;
-
 unsigned long lastDebug;
 
+typedef struct
+{
+  int index;
+  int16_t pos;
+  int16_t prevPos;
+  bool updating;
+  int upPin;
+  int downPin;
+  int readPin;
+  int capPin;
+} FADER;
+
+FADER faders[2] = {{0, 0, 0, false, fader0Up, fader0Down, fader0Read, fader0Cap}, {1, 0, 0, false, fader1Up, fader1Down, fader1Read, fader1Cap}};
+const int faderCount = 2;
 Adafruit_Keypad numpad = Adafruit_Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 void setup()
@@ -32,15 +37,13 @@ void setup()
   // Init Serial
   Serial.begin(SERIAL_BAUD);
 
-  pinMode(fader0Up, OUTPUT);
-  digitalWrite(fader0Up, LOW);
-  pinMode(fader0Down, OUTPUT);
-  digitalWrite(fader0Down, LOW);
-
-  pinMode(fader1Up, OUTPUT);
-  digitalWrite(fader1Up, LOW);
-  pinMode(fader1Down, OUTPUT);
-  digitalWrite(fader1Down, LOW);
+  for (int i = 0; i < faderCount; i++)
+  {
+    pinMode(faders[i].upPin, OUTPUT);
+    digitalWrite(faders[i].upPin, LOW);
+    pinMode(faders[i].downPin, OUTPUT);
+    digitalWrite(faders[i].downPin, LOW);
+  }
 
   // Wait until the arduino is isConnected to master
   while (!isConnected)
@@ -61,74 +64,47 @@ void loop()
 
 void sendFaders()
 {
-  int16_t fader0CurrentPos;
-  int16_t fader1CurrentPos;
+  int16_t faderCurrentPos;
 
-  fader0CurrentPos = analogRead(fader0Read);
-  fader1CurrentPos = analogRead(fader1Read);
-
-  if (!fader0Updating && (fader0CurrentPos < (oldFader0Pos - faderHysteresis) || fader0CurrentPos > (oldFader0Pos + faderHysteresis)))
+  for (int i = 0; i < faderCount; i++)
   {
-    writeOrder(FADER0);
-    writeI16(fader0CurrentPos);
-    Serial.write('\n');
-    oldFader0Pos = fader0CurrentPos;
-  }
-  if (!fader1Updating && (fader1CurrentPos < (oldFader1Pos - faderHysteresis) || fader1CurrentPos > (oldFader1Pos + faderHysteresis)))
-  {
-    writeOrder(FADER1);
-    writeI16(fader1CurrentPos);
-    Serial.write('\n');
-    oldFader1Pos = fader1CurrentPos;
+    faderCurrentPos = analogRead(faders[i].readPin);
+    if (!faders[i].updating && (faderCurrentPos < (faders[i].prevPos - faderHysteresis) || faderCurrentPos > (faders[i].prevPos + faderHysteresis)))
+    {
+      writeOrder(i + 5);
+      writeI16(faderCurrentPos);
+      Serial.write('\n');
+      faders[i].prevPos = faderCurrentPos;
+    }
   }
 }
 
 void setFaders()
 {
-  int16_t fader0CurrentPos;
-  int16_t fader1CurrentPos;
+  int16_t faderCurrentPos;
 
-  if (fader0Updating)
+  for (int i = 0; i < faderCount; i++)
   {
-    fader0CurrentPos = analogRead(fader0Read);
-    oldFader0Pos = fader0CurrentPos;
-    if (fader0CurrentPos > (fader0Pos - faderHysteresis) && fader0CurrentPos < (fader0Pos + faderHysteresis))
+    if (faders[i].updating)
     {
-      fader0Updating = false;
-      digitalWrite(fader0Down, LOW);
-      digitalWrite(fader0Up, LOW);
-    }
-    else if (fader0Pos < fader0CurrentPos)
-    {
-      digitalWrite(fader0Up, LOW);
-      analogWrite(fader0Down, motorSpeed);
-    }
-    else if (fader0Pos > fader0CurrentPos)
-    {
-      digitalWrite(fader0Down, LOW);
-      analogWrite(fader0Up, motorSpeed);
-    }
-  }
-
-  if (fader1Updating)
-  {
-    fader1CurrentPos = analogRead(fader1Read);
-    oldFader1Pos = fader1CurrentPos;
-    if (fader1CurrentPos > (fader1Pos - faderHysteresis) && analogRead(fader1Read) < (fader1Pos + faderHysteresis))
-    {
-      fader1Updating = false;
-      digitalWrite(fader1Down, LOW);
-      digitalWrite(fader1Up, LOW);
-    }
-    else if (fader1Pos < fader1CurrentPos)
-    {
-      digitalWrite(fader1Up, LOW);
-      analogWrite(fader1Down, motorSpeed);
-    }
-    else if (fader1Pos > fader1CurrentPos)
-    {
-      digitalWrite(fader1Down, LOW);
-      analogWrite(fader1Up, motorSpeed);
+      faderCurrentPos = analogRead(faders[i].readPin);
+      faders[i].prevPos = faderCurrentPos;
+      if (faderCurrentPos > (faders[i].pos - faderHysteresis) && faderCurrentPos < (faders[i].pos + faderHysteresis))
+      {
+        faders[i].updating = false;
+        digitalWrite(faders[i].upPin, LOW);
+        digitalWrite(faders[i].downPin, LOW);
+      }
+      else if (faders[i].pos < faderCurrentPos)
+      {
+        digitalWrite(faders[i].upPin, LOW);
+        analogWrite(faders[i].downPin, motorSpeed);
+      }
+      else if (faders[i].pos > faderCurrentPos)
+      {
+        digitalWrite(faders[i].downPin, LOW);
+        analogWrite(faders[i].upPin, motorSpeed);
+      }
     }
   }
 }
@@ -164,14 +140,14 @@ void getMessageFromSerial()
       {
       case FADER0:
       {
-        fader0Pos = readI16();
-        fader0Updating = true;
+        faders[0].pos = readI16();
+        faders[0].updating = true;
         break;
       }
       case FADER1:
       {
-        fader1Pos = readI16();
-        fader1Updating = true;
+        faders[1].pos = readI16();
+        faders[1].updating = true;
         break;
       }
       // Unknown order

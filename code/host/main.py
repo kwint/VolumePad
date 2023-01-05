@@ -1,22 +1,12 @@
 import time
-from dataclasses import dataclass
 from enum import Enum
 
 import serial
 import serial.tools.list_ports
-from robust_serial import read_i8, read_i16, write_i16, write_order
-from robust_serial.utils import open_serial_port
+from robust_serial import write_i16, write_order
 
 import audio_control
 from constants import CHANNELS, Order
-
-
-def read_order(f):
-    """
-    :param f: file handler or serial file
-    :return: (Order Enum Object)
-    """
-    return Order(read_i8(f))
 
 
 class Command(Enum):
@@ -48,6 +38,7 @@ class Protocol:
 
 
 def connect_board(ser) -> serial.Serial:
+    print(f"Board found at {ser.device}")
     return serial.Serial(ser.device, baudrate=115200, timeout=0)
 
 
@@ -84,10 +75,6 @@ if __name__ == "__main__":
     channel_volumes: dict[int, int] = {}
 
     while True:
-        # val = input("fader numer, value [0, 1024]:")
-        # if val == "d":
-        #     print_debug(board)
-        #     continue
 
         for channel in CHANNELS.keys():
 
@@ -111,25 +98,5 @@ if __name__ == "__main__":
             instr = Protocol(cmd)
 
             audio_control.change_volume(pulse, instr.channel_num(), instr.value)
-            channel_volumes[channel] = instr.value
-            print(f"Got: {channel} | {instr.value}")
-
-    # try:
-    #     board = open_serial_port("/dev/ttyACM0", baudrate=115200, timeout=0)
-    # except Exception as e:
-    #     raise e
-
-    # is_connected = False
-    # # Initialize communication with Arduino
-    # while not is_connected:
-    #     print("Waiting for arduino...")
-    #     write_order(board, Order.HELLO)
-    #     bytes_array = bytearray(board.read(1))
-    #     if not bytes_array:
-    #         time.sleep(2)
-    #         continue
-    #     byte = bytes_array[0]
-    #     if byte in [Order.HELLO.value, Order.ALREADY_CONNECTED.value]:
-    #         is_connected = True
-
-    # print("Connected to Arduino")
+            channel_volumes[instr.channel_num()] = instr.value
+            print(f"Got: {instr.channel_num()} | {instr.value}")

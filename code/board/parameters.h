@@ -5,22 +5,18 @@
 
 const int fader0Up = 3;
 const int fader0Down = 5;
+const int fader0Read = A1;
+const int fader0Cap = A2;
+
 const int fader1Up = 6;
 const int fader1Down = 9;
-
-const int fader0Read = A1;
 const int fader1Read = A0;
-const int faderHysteresis = 15;
-
-const int fader0Cap = A2;
 const int fader1Cap = A3;
+
+const int faderHysteresis = 15;
 
 const int waitTime = 100;
 const int outputs[] = {fader0Up, fader0Down, fader1Up, fader1Down, fader0Cap, fader1Cap, 2, 4};
-
-const int faderReads[] = {A1, A0};
-const int faderUps[] = {3, 6};
-const int faderDowns[] = {5, 9};
 
 const int motorSpeed = 255;
 
