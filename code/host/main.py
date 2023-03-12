@@ -1,7 +1,9 @@
+import asyncio
 import time
 from enum import Enum
 
-import serial
+import aioserial
+import pulsectl
 import serial.tools.list_ports
 from robust_serial import write_i16, write_order
 
@@ -37,12 +39,12 @@ class Protocol:
         return int(self.cmd.name[-1])
 
 
-def connect_board(ser) -> serial.Serial:
+def connect_board(ser) -> aioserial.AioSerial:
     print(f"Board found at {ser.device}")
-    return serial.Serial(ser.device, baudrate=115200, timeout=0)
+    return aioserial.AioSerial(ser.device, baudrate=115200)
 
 
-def find_and_connect_board() -> serial.Serial:
+def find_and_connect_board() -> aioserial.AioSerial:
     for ser in serial.tools.list_ports.comports():
         if ser.description == "SparkFun Pro Micro":
             return connect_board(ser)
@@ -50,7 +52,47 @@ def find_and_connect_board() -> serial.Serial:
     raise ValueError("No board found!")
 
 
-if __name__ == "__main__":
+async def board_reader(
+    board: aioserial.AioSerial, pulse: pulsectl.Pulse, channel_volumes
+):
+
+    print("Reading board")
+    while True:
+        cmd = await board.read_until_async(size=4)
+        print("got something")
+        if len(cmd) != 4:
+            print(f"Unexpected thingy! {cmd}")
+            continue
+
+        instr = Protocol(cmd)
+
+        audio_control.change_volume(pulse, instr.channel_num(), instr.value)
+        channel_volumes[instr.channel_num()] = instr.value
+        print(f"Got: {instr.channel_num()} | {instr.value}")
+
+
+async def pulse_reader(
+    pulse: pulsectl.Pulse, board: aioserial.AioSerial, channel_volumes
+):
+    while True:
+
+        for channel in CHANNELS.keys():
+
+            volume = audio_control.get_volume(pulse, channel)
+            if volume is None or volume == channel_volumes.get(channel):
+                continue
+            fader = Order.FADER0 if channel == 0 else Order.FADER1
+
+            write_order(board, fader)
+            write_i16(board, volume)
+            print(f"Sent: {channel} | {volume}")
+
+            channel_volumes[channel] = volume
+
+        await asyncio.sleep(0.1)
+
+
+async def main():
     board = find_and_connect_board()
 
     is_connected = False
@@ -70,33 +112,17 @@ if __name__ == "__main__":
     time.sleep(1)
     board.read_all()
 
-    pulse = audio_control.init()
+    pulse = await audio_control.init()
 
     channel_volumes: dict[int, int] = {}
+    print(" 1")
 
-    while True:
+    async with asyncio.TaskGroup() as tg:
+        board_reader_task = tg.create_task(board_reader(board, pulse, channel_volumes))
+        pulse_reader_task = tg.create_task(pulse_reader(pulse, board, channel_volumes))
 
-        for channel in CHANNELS.keys():
+    print(2)
 
-            volume = audio_control.get_volume(pulse, channel)
-            if volume is None or volume == channel_volumes.get(channel):
-                continue
-            fader = Order.FADER0 if channel == 0 else Order.FADER1
 
-            write_order(board, fader)
-            write_i16(board, volume)
-            print(f"Sent: {channel} | {volume}")
-
-            channel_volumes[channel] = volume
-
-        if board.in_waiting >= 4:
-            cmd = board.readline()
-            if len(cmd) != 4:
-                print(f"Unexpected thingy! {cmd}")
-                continue
-
-            instr = Protocol(cmd)
-
-            audio_control.change_volume(pulse, instr.channel_num(), instr.value)
-            channel_volumes[instr.channel_num()] = instr.value
-            print(f"Got: {instr.channel_num()} | {instr.value}")
+if __name__ == "__main__":
+    asyncio.run(main())

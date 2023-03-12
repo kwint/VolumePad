@@ -12,7 +12,12 @@ class Order(Enum):
     BUTTON_PRESSED = 7
 
 
+# "csgo_linux64",
+# "Deep Rock Galactic",
+# "VLC media player (LibVLC 3.0.16)",
+# "Project Playtime",
+
 CHANNELS = {
-    0: ["csgo_linux64", "Deep Rock Galactic", "VLC media player (LibVLC 3.0.16)"],
-    1: ["Firefox"],
+    0: ["Firefox", "WEBRTC VoiceEngine"],
+    1: "ALL",
 }
