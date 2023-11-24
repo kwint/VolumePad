@@ -24,10 +24,10 @@ const byte ROWS = 4; // rows
 const byte COLS = 3; // columns
 // define the symbols on the buttons of the keypads
 char keys[ROWS][COLS] = {
-    {'1', '2', '3'},
-    {'4', '5', '6'},
-    {'7', '8', '9'},
-    {'*', '0', '#'}};
+    {'0', '1', '2'},
+    {'3', '4', '5'},
+    {'6', '7', '8'},
+    {'9', '10', '11'}};
 byte rowPins[ROWS] = {15, 14, 16, 10};
 byte colPins[COLS] = {7, 8, 1};
 
