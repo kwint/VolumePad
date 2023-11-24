@@ -3,6 +3,8 @@ from enum import Enum
 
 import aioserial
 
+from constants import Command
+
 
 class Order(Enum):
     HELLO = 0
@@ -14,74 +16,74 @@ class Order(Enum):
     STOP = 6
 
 
-async def read_order(f):
+async def read_order(board: aioserial.AioSerial):
     """
     :param f: file handler or serial file
     :return: (Order Enum Object)
     """
-    return Order(read_i8(f))
+    return Order(read_i8(board))
 
 
-async def read_i8(f):
+async def read_i8(board: aioserial.AioSerial):
     """
     :param f: file handler or serial file
     :return: (int8_t)
     """
-    return struct.unpack("<b", bytearray(f.read(1)))[0]
+    return struct.unpack("<b", bytearray(await board.read_async(1)))[0]
 
 
-async def read_i16(f):
+async def read_i16(board: aioserial.AioSerial):
     """
     :param f: file handler or serial file
     :return: (int16_t)
     """
-    return struct.unpack("<h", bytearray(f.read(2)))[0]
+    return struct.unpack("<h", bytearray(await board.read_async(2)))[0]
 
 
-async def read_i32(f):
+async def read_i32(board: aioserial.AioSerial):
     """
     :param f: file handler or serial file
     :return: (int32_t)
     """
-    return struct.unpack("<l", bytearray(f.read(4)))[0]
+    return struct.unpack("<l", bytearray(await board.read_async(4)))[0]
 
 
-async def write_i8(f: aioserial.AioSerial, value):
+async def write_i8(board: aioserial.AioSerial, value):
     """
     :param f: file handler or serial file
     :param value: (int8_t)
     """
     if -128 <= value <= 127:
-        await f.write_async(struct.pack("<b", value))
+        await board.write_async(struct.pack("<b", value))
     else:
         print("Value error:{}".format(value))
 
 
-async def write_order(f: aioserial.AioSerial, order):
+async def write_order(board: aioserial.AioSerial, order: Command):
     """
     :param f: file handler or serial file
     :param order: (Order Enum Object)
     """
-    await write_i8(f, order.value)
+    await write_i8(board, order.value)
 
 
-async def write_i16(f: aioserial.AioSerial, value):
+async def write_i16(board: aioserial.AioSerial, value):
     """
     :param f: file handler or serial file
     :param value: (int16_t)
     """
-    await f.write_async(struct.pack("<h", value))
+    await board.write_async(struct.pack("<h", value))
 
 
-async def write_i32(f: aioserial.AioSerial, value):
+async def write_i32(board: aioserial.AioSerial, value):
     """
     :param f: file handler or serial file
     :param value: (int32_t)
     """
-    await f.write_async(struct.pack("<l", value))
+    await board.write_async(struct.pack("<l", value))
 
 
-async def decode_order(f: aioserial.AioSerial, byte, debug=False):
+async def decode_order(board: aioserial.AioSerial, byte, debug=False):
     """
     :param f: file handler or serial file
     :param byte: (int8_t)
@@ -92,17 +94,17 @@ async def decode_order(f: aioserial.AioSerial, byte, debug=False):
         if order == Order.HELLO:
             msg = "HELLO"
         elif order == Order.SERVO:
-            angle = await read_i16(f)
+            angle = await read_i16(board)
             # Bit representation
             # print('{0:016b}'.format(angle))
             msg = "SERVO {}".format(angle)
         elif order == Order.MOTOR:
-            speed = await read_i8(f)
+            speed = await read_i8(board)
             msg = "motor {}".format(speed)
         elif order == Order.ALREADY_CONNECTED:
             msg = "ALREADY_CONNECTED"
         elif order == Order.ERROR:
-            error_code = await read_i16(f)
+            error_code = await read_i16(board)
             msg = "Error {}".format(error_code)
         elif order == Order.RECEIVED:
             msg = "RECEIVED"
