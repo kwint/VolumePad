@@ -1,5 +1,3 @@
-
-
 #include <Arduino.h>
 #include "Adafruit_Keypad.h"
 #include "order.h"
@@ -17,6 +15,11 @@ int RXLED = 17; // The RX LED has a defined Arduino pin
 //  and RXLED0.)
 
 unsigned long lastDebug;
+
+#define MIDI_NOTE_OFF   0b10000000
+#define MIDI_NOTE_ON    0b10010000
+#define MIDI_CONTROL    0b10110000
+#define MIDI_PITCH_BEND 0b11100000
 
 typedef struct
 {
@@ -47,18 +50,40 @@ void setup()
     pinMode(faders[i].readPin, INPUT);
   }
   numpad.begin();
+
 }
 
 void loop()
 {
-  //Handle USB communication
-	USBMIDI.poll();
+  USBMIDI.poll();
 
-	while (USBMIDI.available()) {
-		// We must read entire available data, so in case we receive incoming
-		// MIDI data, the host wouldn't get stuck.
-		u8 b = USBMIDI.read();
-	}
+  while (USBMIDI.available()) {
+      //Parse MIDI
+      u8 command=0, channel=0, key=0, control=0, value=0, velocity=0;
+
+      //Skip to beginning of next message (silently dropping stray data bytes)
+      while(!(USBMIDI.peek() & 0b10000000)) USBMIDI.read();
+
+      command = USBMIDI.read();
+      channel = (command & 0b00001111)+1;
+      command = command & 0b11110000;
+
+      switch(command) {
+        case MIDI_NOTE_ON:
+        case MIDI_NOTE_OFF:
+          if(USBMIDI.peek() & 0b10000000) continue; key      = USBMIDI.read();
+          if(USBMIDI.peek() & 0b10000000) continue; velocity = USBMIDI.read();
+          break;
+        case MIDI_CONTROL:
+          if(USBMIDI.peek() & 0b10000000) continue; control = USBMIDI.read();
+          if(USBMIDI.peek() & 0b10000000) continue; value = USBMIDI.read();
+
+          faders[control - 20].pos = map(value, 0, 127, 0, 1023);
+          faders[control - 20].updating = true;
+          break;
+      }
+
+  }
   setFaders();
 
   sendFaders();
