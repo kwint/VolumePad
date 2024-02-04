@@ -1,20 +1,26 @@
 from typing import TypeAlias
 
-import constants as cont
 import pulsectl
+import pulsectl_asyncio
 
-Pulse: TypeAlias = pulsectl.Pulse
+import constants as cont
+
+Pulse: TypeAlias = pulsectl_asyncio.PulseAsync
+PulseEvent: TypeAlias = pulsectl.PulseEventInfo
 SinkInInfo: TypeAlias = pulsectl.PulseSinkInputInfo
 
 
-def init():
-    pulse = pulsectl.Pulse("mediaboard")
+async def init():
+    pulse = pulsectl_asyncio.PulseAsync("volumepad")
+    await pulse.connect()
+
     return pulse
+    
 
-
-def get_sinks(pulse: Pulse, channel, single=False):
+async def get_sinks(pulse: Pulse, channel, single=False):
     sinks = []
-    for in_sink in pulse.sink_input_list():
+    in_sinks = await pulse.sink_input_list()
+    for in_sink in in_sinks:
         if in_sink.proplist.get("application.name") in cont.CHANNELS[channel]:
             sinks.append(in_sink)
             if single:
@@ -26,22 +32,22 @@ def get_sinks(pulse: Pulse, channel, single=False):
     return sinks
 
 
-def change_volume(pulse: pulsectl.Pulse, channel, volume: int):
-    sinks = get_sinks(pulse, channel, False)
+async def change_volume(pulse: pulsectl_asyncio.PulseAsync, channel, volume: int):
+    sinks = await get_sinks(pulse, channel, False)
 
     if sinks is None:
         return None
 
     for sink in sinks:
-        pulse.volume_set_all_chans(sink, volume / 1024)
+        await pulse.volume_set_all_chans(sink, volume / 1024)
 
 
-def get_volume(pulse: pulsectl.Pulse, channel: int):
-    sinks = get_sinks(pulse, channel, True)
+async def get_volume(pulse: pulsectl_asyncio.PulseAsync, channel: int):
+    sinks = await get_sinks(pulse, channel, True)
 
     if sinks is None:
         return None
 
-    volume = pulse.volume_get_all_chans(sinks[0])
+    volume = await pulse.volume_get_all_chans(sinks[0])
 
     return int(volume * 1024)

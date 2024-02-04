@@ -1,12 +1,12 @@
-
-
 #include <Arduino.h>
 #include "Adafruit_Keypad.h"
 #include "order.h"
 #include "slave.h"
 #include "parameters.h"
+#include "usbmidi.h"
 
 bool isConnected = false; ///< True if the connection with the master is available
+const int channel = 1;
 
 int RXLED = 17; // The RX LED has a defined Arduino pin
 // Note: The TX LED was not so lucky, we'll need to use pre-defined
@@ -15,6 +15,11 @@ int RXLED = 17; // The RX LED has a defined Arduino pin
 //  and RXLED0.)
 
 unsigned long lastDebug;
+
+#define MIDI_NOTE_OFF   0b10000000
+#define MIDI_NOTE_ON    0b10010000
+#define MIDI_CONTROL    0b10110000
+#define MIDI_PITCH_BEND 0b11100000
 
 typedef struct
 {
@@ -34,8 +39,6 @@ Adafruit_Keypad numpad = Adafruit_Keypad(makeKeymap(keys), rowPins, colPins, ROW
 
 void setup()
 {
-  // Init Serial
-  Serial.begin(SERIAL_BAUD);
 
   for (int i = 0; i < faderCount; i++)
   {
@@ -43,23 +46,67 @@ void setup()
     digitalWrite(faders[i].upPin, LOW);
     pinMode(faders[i].downPin, OUTPUT);
     digitalWrite(faders[i].downPin, LOW);
-  }
 
-  // Wait until the arduino is isConnected to master
-  while (!isConnected)
-  {
-    writeOrder(HELLO);
-    waitForBytes(1, 1000);
-    getMessageFromSerial();
+    pinMode(faders[i].readPin, INPUT);
   }
+  numpad.begin();
+
 }
 
 void loop()
 {
-  getMessageFromSerial();
+  USBMIDI.poll();
+
+  while (USBMIDI.available()) {
+      //Parse MIDI
+      u8 command=0, channel=0, key=0, control=0, value=0, velocity=0;
+
+      //Skip to beginning of next message (silently dropping stray data bytes)
+      while(!(USBMIDI.peek() & 0b10000000)) USBMIDI.read();
+
+      command = USBMIDI.read();
+      channel = (command & 0b00001111)+1;
+      command = command & 0b11110000;
+
+      switch(command) {
+        case MIDI_NOTE_ON:
+        case MIDI_NOTE_OFF:
+          if(USBMIDI.peek() & 0b10000000) continue; key      = USBMIDI.read();
+          if(USBMIDI.peek() & 0b10000000) continue; velocity = USBMIDI.read();
+          break;
+        case MIDI_CONTROL:
+          if(USBMIDI.peek() & 0b10000000) continue; control = USBMIDI.read();
+          if(USBMIDI.peek() & 0b10000000) continue; value = USBMIDI.read();
+
+          faders[control - 20].pos = map(value, 0, 127, 0, 1023);
+          faders[control - 20].updating = true;
+          break;
+      }
+
+  }
   setFaders();
 
   sendFaders();
+  sendButtons();
+  
+	USBMIDI.flush();
+}
+
+void sendButtons()
+{
+  numpad.tick();
+  while (numpad.available())
+  {
+    keypadEvent e = numpad.read();
+    if (e.bit.EVENT == KEY_JUST_PRESSED)
+    {
+      sendNote(channel, e.bit.KEY, 127);
+    }
+    else if (e.bit.EVENT == KEY_JUST_RELEASED)
+    {
+      sendNote(channel, e.bit.KEY, 0);
+    }
+  }
 }
 
 void sendFaders()
@@ -71,12 +118,24 @@ void sendFaders()
     faderCurrentPos = analogRead(faders[i].readPin);
     if (!faders[i].updating && (faderCurrentPos < (faders[i].prevPos - faderHysteresis) || faderCurrentPos > (faders[i].prevPos + faderHysteresis)))
     {
-      writeOrder(i + 5);
-      writeI16(faderCurrentPos);
-      Serial.write('\n');
+      sendCC(channel, i + 40, map(faderCurrentPos, 0, 1023, 0, 127));
       faders[i].prevPos = faderCurrentPos;
     }
   }
+}
+
+void sendCC(uint8_t channel, uint8_t control, uint8_t value)
+{
+  USBMIDI.write(0xB0 | (channel & 0xf));
+  USBMIDI.write(control & 0x7f);
+  USBMIDI.write(value & 0x7f);
+}
+
+void sendNote(uint8_t channel, uint8_t note, uint8_t velocity)
+{
+  USBMIDI.write((velocity != 0 ? 0x90 : 0x80) | (channel & 0xf));
+  USBMIDI.write(note & 0x7f);
+  USBMIDI.write(velocity & 0x7f);
 }
 
 void setFaders()
@@ -107,130 +166,4 @@ void setFaders()
       }
     }
   }
-}
-
-void getMessageFromSerial()
-{
-  if (Serial.available() > 0)
-  {
-    // The first byte received is the instruction
-    Order orderReceived = readOrder();
-
-    if (orderReceived == HELLO)
-    {
-      // If the cards haven't say hello, check the connection
-      if (!isConnected)
-      {
-        isConnected = true;
-        writeOrder(HELLO);
-      }
-      else
-      {
-        // If we are already isConnected do not send "hello" to avoid infinite loop
-        writeOrder(ALREADY_CONNECTED);
-      }
-    }
-    else if (orderReceived == ALREADY_CONNECTED)
-    {
-      isConnected = true;
-    }
-    else
-    {
-      switch (orderReceived)
-      {
-      case FADER0:
-      {
-        faders[0].pos = readI16();
-        faders[0].updating = true;
-        break;
-      }
-      case FADER1:
-      {
-        faders[1].pos = readI16();
-        faders[1].updating = true;
-        break;
-      }
-      // Unknown order
-      default:
-        writeOrder(ERROR);
-        writeI16(404);
-        return;
-      }
-    }
-  }
-}
-
-Order readOrder()
-{
-  return (Order)Serial.read();
-}
-
-void waitForBytes(int num_bytes, unsigned long timeout)
-{
-  unsigned long startTime = millis();
-  // Wait for incoming bytes or exit if timeout
-  while ((Serial.available() < num_bytes) && (millis() - startTime < timeout))
-  {
-  }
-}
-
-// NOTE : Serial.readBytes is SLOW
-// this one is much faster, but has no timeout
-void readSignedBytes(int8_t *buffer, size_t n)
-{
-  size_t i = 0;
-  int c;
-  while (i < n)
-  {
-    c = Serial.read();
-    if (c < 0)
-      break;
-    *buffer++ = (int8_t)c; // buffer[i] = (int8_t)c;
-    i++;
-  }
-}
-
-int8_t readI8()
-{
-  waitForBytes(1, 100); // Wait for 1 byte with a timeout of 100 ms
-  return (int8_t)Serial.read();
-}
-
-int16_t readI16()
-{
-  int8_t buffer[2];
-  waitForBytes(2, 100); // Wait for 2 bytes with a timeout of 100 ms
-  readSignedBytes(buffer, 2);
-  return (((int16_t)buffer[0]) & 0xff) | (((int16_t)buffer[1]) << 8 & 0xff00);
-}
-
-int32_t readI32()
-{
-  int8_t buffer[4];
-  waitForBytes(4, 200); // Wait for 4 bytes with a timeout of 200 ms
-  readSignedBytes(buffer, 4);
-  return (((int32_t)buffer[0]) & 0xff) | (((int32_t)buffer[1]) << 8 & 0xff00) | (((int32_t)buffer[2]) << 16 & 0xff0000) | (((int32_t)buffer[3]) << 24 & 0xff000000);
-}
-
-void writeOrder(enum Order myOrder)
-{
-  uint8_t *Order = (uint8_t *)&myOrder;
-  Serial.write(Order, sizeof(uint8_t));
-}
-
-void writeI8(int8_t num)
-{
-  Serial.write(num);
-}
-
-void writeI16(int16_t num)
-{
-  int8_t buffer[2] = {(int8_t)(num & 0xff), (int8_t)(num >> 8)};
-  Serial.write((uint8_t *)&buffer, 2 * sizeof(int8_t));
-}
-
-void writeI32(int32_t num)
-{
-  int8_t buffer[4] = {(int8_t)(num & 0xff), (int8_t)(num >> 8 & 0xff), (int8_t)(num >> 16 & 0xff), (int8_t)(num >> 24 & 0xff)};
-  Serial.write((uint8_t *)&buffer, 4 * sizeof(int8_t));
 }
