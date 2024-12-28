@@ -1,7 +1,5 @@
 #include <Arduino.h>
 #include "Adafruit_Keypad.h"
-#include "order.h"
-#include "slave.h"
 #include "parameters.h"
 #include "usbmidi.h"
 
@@ -31,9 +29,11 @@ typedef struct
   int downPin;
   int readPin;
   int capPin;
+  int16_t capBaseLine;
+
 } FADER;
 
-FADER faders[2] = {{0, 0, 0, false, fader0Up, fader0Down, fader0Read, fader0Cap}, {1, 0, 0, false, fader1Up, fader1Down, fader1Read, fader1Cap}};
+FADER faders[2] = {{0, 0, 0, false, fader0Up, fader0Down, fader0Read, fader0Cap, 0}, {1, 0, 0, false, fader1Up, fader1Down, fader1Read, fader1Cap, 0}};
 const int faderCount = 2;
 Adafruit_Keypad numpad = Adafruit_Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
@@ -48,8 +48,11 @@ void setup()
     digitalWrite(faders[i].downPin, LOW);
 
     pinMode(faders[i].readPin, INPUT);
+
   }
   numpad.begin();
+  Serial.begin(9600);
+
 
 }
 
@@ -78,9 +81,12 @@ void loop()
           if(USBMIDI.peek() & 0b10000000) continue; control = USBMIDI.read();
           if(USBMIDI.peek() & 0b10000000) continue; value = USBMIDI.read();
 
-          faders[control - 20].pos = map(value, 0, 127, 0, 1023);
-          faders[control - 20].updating = true;
+          if (!capTouched(faders[control-20].capPin, 4250)){
+            faders[control - 20].pos = map(value, 0, 127, 0, 1023);
+            faders[control - 20].updating = true;
+          }
           break;
+
       }
 
   }
@@ -166,4 +172,19 @@ void setFaders()
       }
     }
   }
+}
+
+bool capTouched(int pin, int baseline){
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, HIGH);
+    pinMode(pin,INPUT);
+    int count = 0;
+    unsigned long start_time = millis();
+    while (millis() - start_time < 25) { // Check for 50 ms
+        if (digitalRead(pin)) {
+            count++;
+        }
+    }
+    Serial.println(count);
+    return count < baseline;
 }
